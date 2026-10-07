@@ -1,39 +1,35 @@
-################################################################################
-# Frozen NEI main-model engine (source-only).
-#
-# T1 structure is frozen from compare_time_control_models4.R:
-# TEMP, RH, TEMP-RH, city-specific TEMP/RH deviations, precipitation, PM2.5,
-# wind, month FE, city-specific date smooth (k=10), calendar type, city RE,
-# and model-specific AR(1). Inference targets the headline exposure-weighted
-# marginal effect (EWME) of compare_time_control_models3.R / models4.R
-# (central-95% exposure grid, trapezoidal density weights, link-scale design
-# difference over the exposure smooths). Circular calendar-date moving-block
-# bootstrap refits estimate the standard error. For multiplicative outcomes,
-# the reported 95% CI is centred on the original-model Link_EWME and transformed
-# back to percent change. For logit-share outcomes, it is centred on the
-# original-model percentage-point EWME on its reported scale.
-# Families: nb(log) for counts, Gamma(log) for positive spending, gaussian()
-# for continuous responses, and betar(logit) for 0-1 share responses.
-#
-# A wrapper prepares a panel with city, DATE, TEMP, RH, WS, PRECIP, PM25,
-# calendar_type and its response variables, then calls main_model_run().
-################################################################################
+#!/usr/bin/env Rscript
+# Paper: Heat and Humidity Reshape Urban Economic Activity at Night
+# Contact: chenchen1107@connect.hku.hk
+# Input: local prepared city-date panel. Output: models and bootstrap results.
+
+PANEL_FILE <- "data/main_panel.csv"
+OUTPUT_DIR <- "output_main"
 
 suppressPackageStartupMessages({ library(mgcv); library(dplyr) })
 
-MAIN_MODEL_VERSION <- "frozen_T1_AR1_date_block_bootstrap_normal_CI_EWME_v3_2026-09-19"
+MAIN_MODEL_VERSION <- "main_AR1_EWME_v2"
 MAIN_CITIES <- c("Beijing","Changsha","Chengdu","Fuzhou","Guangzhou","Guiyang",
   "Hangzhou","Ningbo","Shanghai","Chongqing","Shenyang","Wuhan","Hefei",
-  "Huhehaote","Nanjing","Nanning","Qingdao","Shenzhen","Wulumuqi","Xining",
-  "Yinchuan","Dalian","Xian","Kunming","Nanchang","Lanzhou","Zhengzhou",
-  "Xiamen","Haikou","Haerbin","Shijiazhuang","Jinan","Lasa","Taiyuan",
+  "Hohhot","Nanjing","Nanning","Qingdao","Shenzhen","Urumqi","Xining",
+  "Yinchuan","Dalian","Xi'an","Kunming","Nanchang","Lanzhou","Zhengzhou",
+  "Xiamen","Haikou","Harbin","Shijiazhuang","Jinan","Lhasa","Taiyuan",
   "Changchun","Tianjin")
 MAIN_CALENDAR_LEVELS <- c("Monday","Tuesday","Wednesday","Thursday","Friday",
   "Saturday","Sunday","Statutory holiday","Make-up workday")
 
+level_model_outcomes <- function() {
+  data.frame(
+    Outcome = c("TC","TS","AS"),
+    Response = c("model_cnt","model_amt","model_amt_per_cnt"),
+    Family = c("nb","gamma","gamma"),
+    Response_scale = c("multiplicative","multiplicative","multiplicative"),
+    Scale_factor = c(1,100000,10),
+    Description = c("Transaction count","Total spending","Average spending per transaction"),
+    stringsAsFactors = FALSE)
+}
+
 main_model_defaults <- function() list(
-  # seed = 20260912 matches block_bootstrap_final_T1_EWME.R (SEED) so the
-  # calendar-date block bootstrap here reproduces the final main-model results.
   rho_abs_bound = .95, block_length = 7L, n_boot = 1000L,
   seed = 20260912L, fix_sp = TRUE, force_refit = FALSE,
   export_bootstrap_curves = FALSE, curve_grid_n = 100L, n_cores = 1L)
@@ -83,8 +79,6 @@ main_model_formula <- function(response) {
 }
 
 main_model_clamp_nb_deviance <- function(family) {
-  # bam whitens AR(1) residuals with sqrt(dev.resids); clamp tiny negative NB
-  # deviances to 0 so sqrt(-x) cannot abort a bootstrap refit.
   orig <- family$dev.resids
   family$dev.resids <- function(y, mu, wt, ...) {
     d <- orig(y, mu, wt, ...); d[!is.na(d) & d < 0] <- 0; d
@@ -121,17 +115,6 @@ main_model_rho <- function(fit, d, bound) {
   max(-bound, min(bound, median(city_rhos)))
 }
 
-# ---------------------------------------------------------------------------
-# Headline EWME (exposure-weighted marginal effect), aligned with the EWME
-# calculation in compare_time_control_models3.R / compare_time_control_models4.R
-# and block_bootstrap_final_T1_EWME.R:
-#   * exposure grid over the central 95% range (301 points);
-#   * trapezoidal density weights;
-#   * link-scale design difference from a p2.5 reference, restricted to the
-#     selected exposure smooths.
-# Effects: 100*(exp(eta)-1) percent change for log-link families; density-
-# weighted change in predicted probability (percentage points) for logit-share.
-# ---------------------------------------------------------------------------
 main_model_norm_label <- function(x) gsub("\\s+", "", x)
 
 main_model_term_columns <- function(fit, labels) {
@@ -142,8 +125,6 @@ main_model_term_columns <- function(fit, labels) {
 }
 
 main_model_design_difference <- function(fit, newdata, refdata, labels) {
-  # Explicit lpmatrix prediction avoids predict.bam's discrete tensor
-  # reassembly issue for synthetic exposure grids that contain re margins.
   X <- mgcv::predict.gam(fit, newdata = newdata, type = "lpmatrix")
   Xr <- mgcv::predict.gam(fit, newdata = refdata, type = "lpmatrix")
   if (nrow(Xr) == 1L) Xr <- Xr[rep(1L, nrow(X)), , drop = FALSE]
@@ -178,10 +159,6 @@ main_model_ewme_row <- function(fit, D, Xr, w, labels, name, response_scale) {
     stringsAsFactors = FALSE)
 }
 
-# Exposure grid / reference / density weights / joint empirical rows, computed
-# once on the full analysis sample and held fixed across bootstrap replicates
-# (the "fixed original exposure specification" convention of the final
-# main-model block bootstrap).
 main_model_ewme_spec <- function(d, grid_n = 301L) {
   make_grid <- function(exposure) {
     lo <- as.numeric(quantile(d[[exposure]], .025))
@@ -199,9 +176,6 @@ main_model_ewme_spec <- function(d, grid_n = 301L) {
     joint_weights = rep(1 / sum(keep), sum(keep)))
 }
 
-# With fixed_spec supplied, the grids/weights/joint rows come from the original
-# sample (spec), so only the fitted coefficients vary across replicates. Without
-# it, the specification is recomputed from d (the historical behaviour).
 main_model_ewme <- function(fit, d, spec, fixed_spec = NULL) {
   base <- d[1, , drop = FALSE]
   grid_n <- if (is.null(fixed_spec)) 301L else fixed_spec$grid_n
@@ -250,10 +224,6 @@ main_model_ewme <- function(fit, d, spec, fixed_spec = NULL) {
   out[, c("Outcome", "Effect", "EWME", "Effect_unit", "Link_EWME")]
 }
 
-# Main-effect response curves use the same definition as the historical T1
-# comparison plots: retain only ti(TEMP) or ti(RH), excluding the interaction
-# and city-specific deviation terms.  The uncertainty is added below from the
-# calendar-date block bootstrap refits, never from model covariance Wald bands.
 main_model_curve_grid <- function(d, n = 100L) {
   make_grid <- function(exposure) {
     x <- seq(min(d[[exposure]], na.rm = TRUE), max(d[[exposure]], na.rm = TRUE), length.out = n)
@@ -302,12 +272,11 @@ main_model_boot_sample <- function(d, date_levels, block_length, seed, city_coun
   out$DATE <- out$source_date; out$source_date <- NULL
   out <- out[order(out$city_factor, out$boot_day), , drop = FALSE]; rownames(out) <- NULL
   out$AR_start <- c(TRUE, out$city_factor[-1L] != out$city_factor[-nrow(out)] |
-    out$boot_block[-1L] != out$boot_block[-nrow(out)])
+    out$boot_block[-1L] != out$boot_block[-nrow(out)] |
+    as.integer(diff(out$DATE)) != 1L)
   out
 }
 
-# Create a PSOCK cluster, retrying on the transient "port already in use"
-# failures that happen when several independent runs start clusters at once.
 main_model_make_cluster <- function(n, attempts = 20L) {
   for (k in seq_len(attempts)) {
     cl <- tryCatch(parallel::makeCluster(n, type = "PSOCK", outfile = ""),
@@ -318,33 +287,29 @@ main_model_make_cluster <- function(n, attempts = 20L) {
   stop("Could not create a PSOCK cluster after ", attempts, " attempts")
 }
 
-# One bootstrap replicate. Runs either in-process (n_cores = 1) or on a PSOCK
-# worker; on a worker it reads the replicate context from the global
-# .mm_context list that main_model_bootstrap_ewme exports (the parent session
-# has already fitted bam models, so PSOCK is used instead of fork).
 main_model_bootstrap_one <- function(i) {
   ctx <- .mm_context
   cache <- file.path(ctx$bundle_dir, sprintf("bootstrap_%04d.rds", i))
   if (!ctx$config$force_refit && file.exists(cache)) {
     old <- tryCatch(readRDS(cache), error = function(e) NULL)
-    if (!is.null(old) && isTRUE(old$ok) &&
+    if (!is.null(old) && isTRUE(old$ok) && identical(old$model_version, MAIN_MODEL_VERSION) &&
       (!isTRUE(ctx$config$export_bootstrap_curves) || !is.null(old$curve))) return(old)
   }
   ans <- tryCatch({
     b <- main_model_boot_sample(ctx$d, ctx$date_levels, ctx$config$block_length, ctx$seeds[i], ctx$city_count)
-    # do.call forces the resampled data and AR.start vector before bam evaluates
-    # its call, avoiding lazy evaluation of local objects (models3/4 pattern).
     bf <- do.call(mgcv::bam, list(formula = ctx$formula, data = b,
       family = main_model_family(ctx$spec, main_model_theta(ctx$final_fit, ctx$spec)),
       method = "fREML", discrete = TRUE, nthreads = 1, rho = ctx$final_fit$AR1.rho,
       AR.start = as.logical(b$AR_start), control = mgcv::gam.control(maxit = 200),
       sp = if (ctx$config$fix_sp) ctx$final_fit$sp else NULL))
+    if (!isTRUE(bf$converged)) stop("Bootstrap model did not converge")
     ew <- main_model_ewme(bf, b, ctx$spec, fixed_spec = ctx$ewme_spec); ew$Replicate <- i
     cv <- if (isTRUE(ctx$config$export_bootstrap_curves)) {
       x <- main_model_response_curves(bf, b, ctx$spec, ctx$curve_grid); x$Replicate <- i; x
     } else NULL
     list(ok = TRUE, Replicate = i, ewme = ew, curve = cv, error = NA_character_)
   }, error = function(e) list(ok = FALSE, Replicate = i, ewme = NULL, curve = NULL, error = conditionMessage(e)))
+  ans$model_version <- MAIN_MODEL_VERSION
   saveRDS(ans, cache); ans
 }
 
@@ -356,8 +321,6 @@ main_model_bootstrap_ewme <- function(final_fit, formula, d, spec, config, bundl
   dir.create(bundle_dir, recursive = TRUE, showWarnings = FALSE)
   if (!is.finite(config$curve_grid_n) || config$curve_grid_n < 2L) stop("curve_grid_n must be at least 2")
   curve_grid <- if (isTRUE(config$export_bootstrap_curves)) main_model_curve_grid(d, config$curve_grid_n) else NULL
-  # Fix the EWME specification on the full analysis sample and reuse it in every
-  # replicate (matches the final main-model block bootstrap).
   ewme_spec <- main_model_ewme_spec(d)
   set.seed(config$seed); seeds <- sample.int(.Machine$integer.max, config$n_boot)
   n_cores <- config$n_cores
@@ -365,9 +328,6 @@ main_model_bootstrap_ewme <- function(final_fit, formula, d, spec, config, bundl
   n_cores <- min(as.integer(n_cores), config$n_boot)
   use_psock <- n_cores > 1L && .Platform$OS.type == "unix" &&
     requireNamespace("parallel", quietly = TRUE)
-  # Expose one replicate's context to main_model_bootstrap_one. It is assigned in
-  # the global environment so the same function works sequentially and on PSOCK
-  # workers (which receive it via clusterExport).
   .mm_context <- list(d = d, formula = formula, spec = spec, config = config,
     final_fit = final_fit, seeds = seeds, date_levels = date_levels,
     city_count = city_count, bundle_dir = bundle_dir, curve_grid = curve_grid,
@@ -432,20 +392,11 @@ main_model_bootstrap_ewme <- function(final_fit, formula, d, spec, config, bundl
   if (isTRUE(config$export_bootstrap_curves)) {
     curve_replicates <- bind_rows(lapply(success, function(x) x$curve))
     curve_point <- main_model_response_curves(final_fit, d, spec, curve_grid)
-    # Bootstrap summary keys exclude the exposure-invariant reference probability;
-    # Pr_ref is taken from the full-sample point estimate below.
     curve_keys <- c("Outcome", "Exposure", "Exposure_value", "Reference_value",
                     "In_central_95pct", "Effect_unit")
     curve_boot <- curve_replicates %>% group_by(across(all_of(curve_keys))) %>% summarise(
       N_boot_success = n(), Bootstrap_SE_link = sd(Link_effect), .groups = "drop")
-    # For percent_change outcomes, build the interval on the log link and
-    # back-transform. For logit-share outcomes, build the interval on the logit
-    # link around the point estimate's link effect and back-transform with
-    # plogis at the reference probability, so the band is in percentage points
-    # (never mix the link-scale SE with the percentage-point Effect scale).
     curve_summary <- left_join(curve_point, curve_boot, by = curve_keys) %>% mutate(
-      # On the logit link the point effect is Link_effect; back-transform the
-      # interval endpoints through plogis at the reference probability.
       CI_lower = if_else(Effect_unit == "percent_change",
         100 * (exp(Link_effect - qnorm(.975) * Bootstrap_SE_link) - 1),
         100 * (plogis(Link_effect - qnorm(.975) * Bootstrap_SE_link + qlogis(Pr_ref)) - Pr_ref)),
@@ -475,9 +426,6 @@ main_model_run <- function(data, outcomes, output_dir, config = main_model_defau
   d <- main_model_prepare_panel(scaled_data, outcomes$Response)
   write.csv(d, file.path(output_dir, "analysis_data_model_input.csv"), row.names = FALSE)
   write.csv(outcomes, file.path(output_dir, "outcome_specifications.csv"), row.names = FALSE)
-  # Config for a single outcome's bootstrap. When several outcomes are fitted
-  # concurrently, give each only a fair share of n_cores so total concurrency
-  # never exceeds the cores budget (fit workers x bootstrap workers).
   n_fit_probe <- config$n_cores
   if (is.null(n_fit_probe) || length(n_fit_probe) != 1L || !is.finite(n_fit_probe) || n_fit_probe < 1L) n_fit_probe <- 1L
   n_fit_probe <- min(as.integer(n_fit_probe), nrow(outcomes))
@@ -506,10 +454,6 @@ main_model_run <- function(data, outcomes, output_dir, config = main_model_defau
       status = data.frame(Outcome = spec$Outcome, Model = "T1_AR1", Success = TRUE,
         Formula = paste(deparse(formula, width.cutoff = 500), collapse = " ")))
   }
-  # Outcomes are fitted independently; run them in parallel up to n_cores so the
-  # pilot/AR(1) fit stage is not limited to a single thread. Each outcome still
-  # uses one BAM thread, and within main_model_bootstrap_ewme the bootstrap keeps
-  # using n_cores workers.
   n_fit <- config$n_cores
   if (is.null(n_fit) || length(n_fit) != 1L || !is.finite(n_fit) || n_fit < 1L) n_fit <- 1L
   n_fit <- min(as.integer(n_fit), nrow(outcomes))
@@ -533,11 +477,6 @@ main_model_run <- function(data, outcomes, output_dir, config = main_model_defau
     curves = bind_rows(all_curves), diagnostics = bind_rows(all_diagnostics), config = config))
 }
 
-# ---------------------------------------------------------------------------
-# Consolidated run report (one human-readable report.txt per output directory).
-# fmt_table renders a data.frame as fixed-width text; report_block wraps it with
-# a numbered section header, matching the Rain_Robustness report convention.
-# ---------------------------------------------------------------------------
 main_model_fmt_table <- function(df, digits = 4) {
   df <- as.data.frame(df, stringsAsFactors = FALSE)
   if (!nrow(df)) return("(no rows)")
@@ -558,9 +497,6 @@ main_model_report_block <- function(title, df, digits = 4) {
   c(strrep("-", 92), title, strrep("-", 92), main_model_fmt_table(df, digits), "")
 }
 
-# Writes report.txt into output_dir from the objects produced by main_model_run
-# (result list) plus optional row/column descriptors. `scenario`, `sample_line`,
-# `source_line`, `curve_ci` and `extra_blocks` let each wrapper add its context.
 main_model_write_report <- function(result, output_dir, title,
                                     sample_line = NULL, source_line = NULL,
                                     exposure_line = NULL, scenario_line = NULL,
@@ -588,7 +524,7 @@ main_model_write_report <- function(result, output_dir, title,
     if (!is.null(scenario_line)) paste0("Scenario      : ", scenario_line),
     paste0("Sample        : ", if (!is.null(sample_line)) sample_line else
       paste0(nrow(d), " city-nights, ", length(unique(d$city)), " cities")),
-    "Design        : frozen T1 AR(1): ti(TEMP)+ti(RH)+ti(TEMP,RH)+city-specific TEMP/RH+PRECIP+PM25+WS+month FE+city-specific date smooth(k=10)+calendar type+city RE",
+    "Design        : AR(1): ti(TEMP)+ti(RH)+ti(TEMP,RH)+city-specific TEMP/RH+PRECIP+PM25+WS+month FE+city-specific date smooth(k=10)+calendar type+city RE",
     "AR(1)         : median city lag-1 working-residual rho from matching IID pilot; AR.start at city/date gaps",
     sprintf("Bootstrap     : B=%d, block=%d, fixed sp=%s, calendar-date circular moving block, normal CI on the link scale",
       cfg$n_boot, cfg$block_length, isTRUE(cfg$fix_sp)),
@@ -604,3 +540,23 @@ main_model_write_report <- function(result, output_dir, title,
   writeLines(blocks, report_path)
   invisible(report_path)
 }
+
+main_model_entry <- function() {
+  file_arg <- grep("^--file=", commandArgs(FALSE), value = TRUE)
+  if (!length(file_arg)) stop("Run with Rscript Main_model.R")
+  script_dir <- dirname(normalizePath(sub("^--file=", "", file_arg[1]), winslash = "/"))
+  input <- file.path(script_dir, PANEL_FILE)
+  output <- file.path(script_dir, OUTPUT_DIR)
+  if (!file.exists(input)) stop("Local prepared panel not found: ", input)
+  config <- main_model_defaults()
+  message("Input: ", input, "\nOutput: ", output, "\nInput files: 1",
+    "\nBootstrap replicates: ", config$n_boot,
+    "\nOverwrite: same-name outputs; successful cached bootstrap fits are reused")
+  panel <- read.csv(input, stringsAsFactors = FALSE)
+  result <- main_model_run(panel, level_model_outcomes(), output, config)
+  message("Rows: ", nrow(result$data), "; cities: ", length(unique(result$data$city)),
+    "; dates: ", min(result$data$DATE), " to ", max(result$data$DATE), "; saved to: ", output)
+  invisible(result)
+}
+
+if (sys.nframe() == 0L) main_model_entry()
