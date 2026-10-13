@@ -38,7 +38,7 @@ The Timing validation checks data matching, design construction, parameter recov
 | [`Timing/`](Timing/) | Conditional model of the hourly distribution of nighttime activity; penalty selection, estimation, bootstrap, and grid confidence intervals. |
 | [`examples/`](examples/) | Fully synthetic main-model input, generator, demonstration script, and sample outputs. |
 
-The study analyses used **Python 3.12.9**, **R 4.4.1**, and **mgcv 1.9-3**. Python is not required to run the R scripts in this repository. The public main-model demo was tested on **Windows 11** with **R 4.5.1**, **mgcv 1.9-3**, and **dplyr 1.1.4**; this test does not establish compatibility with every research-server configuration. The Timing code additionally uses `data.table` and `Matrix`. Base R provides `parallel` and `splines`. No specialized hardware is required for the small demo; full research runs are substantially more demanding.
+The study analyses used **Python 3.12.9**, **R 4.4.1**, and **mgcv 1.9-3**. Python is used for mapping. The Timing code additionally uses `data.table` and `Matrix`. Base R provides `parallel` and `splines`. No specialized hardware is required for the small demo; full research runs are substantially more demanding.
 
 ## Data access and required input
 
@@ -55,8 +55,6 @@ For an authorized main-model run, place `main_panel.csv` in `data/` next to `Mai
 | `model_cnt` | Transaction count (TC). |
 | `model_amt` | Total spending (TS), in original monetary units. |
 | `model_amt_per_cnt` | Average spending (AS): `model_amt / model_cnt`. |
-
-The script excludes rows with invalid or missing required fields. After filtering, the date-block bootstrap requires a balanced city–date panel and adequate covariate variation for spline fitting. Supply **unscaled outcomes**: the code divides TS by 100,000 and AS by 10 before fitting.
 
 ## Main-model research run
 
