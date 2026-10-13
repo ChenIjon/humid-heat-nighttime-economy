@@ -1,0 +1,30 @@
+# Default publication scope: code, documentation and the fully synthetic CSV.
+# Real data and generated artifacts require explicit release authorization.
+*
+!*/
+!*.R
+!*.py
+!*.md
+!.gitignore
+
+# Restricted inputs and generated outputs at every directory depth.
+**/data/
+**/output*/
+**/models/
+**/bootstrap_bundles/
+*.csv
+*.txt
+*.rds
+*.RData
+*.parquet
+*.feather
+*.xlsx
+*.log
+*.out
+*.err
+.Rhistory
+__pycache__/
+*.pyc
+
+# This single CSV is generated without reading real data and may be shared.
+!/examples/main_panel_synthetic.csv
