@@ -1,0 +1,4 @@
+"Outcome","Response","Family","Response_scale","Rho","N","Deviance_explained_pct","Adjusted_R_squared","Converged"
+"TC","model_cnt","nb","multiplicative",0.111767623247892,360,43.3513986228287,0.367287434442394,TRUE
+"TS","model_amt","gamma","multiplicative",0.145384919163196,360,47.7282516575535,0.411036314165207,TRUE
+"AS","model_amt_per_cnt","gamma","multiplicative",0.105644574294471,360,18.7552590101052,0.134941222914176,TRUE

@@ -1,0 +1,37 @@
+============================================================================================
+SYNTHETIC DEMO - NOT RESEARCH RESULTS
+============================================================================================
+Run version   : main_AR1_EWME_v2
+Generated     : 2026-10-13 14:20:18
+Source        : Fully synthetic input; no real transactions
+Sample        : 360 city-nights, 3 cities
+Design        : AR(1): ti(TEMP)+ti(RH)+ti(TEMP,RH)+city-specific TEMP/RH+PRECIP+PM25+WS+month FE+city-specific date smooth(k=10)+calendar type+city RE
+AR(1)         : median city lag-1 working-residual rho from matching IID pilot; AR.start at city/date gaps
+Bootstrap     : B=4, block=7, fixed sp=TRUE, calendar-date circular moving block, normal CI on the link scale
+CI convention : original-fit link-scale EWME +/- 1.96 * bootstrap SE; report scale per Effect_unit
+
+--------------------------------------------------------------------------------------------
+1. MODEL FIT SUMMARY
+--------------------------------------------------------------------------------------------
+Outcome  Response           Family  Response_scale  Rho     N    Deviance_explained_pct  Adjusted_R_squared  Converged
+----------------------------------------------------------------------------------------------------------------------
+TC       model_cnt          nb      multiplicative  0.1118  360  43.35                   0.3673              TRUE     
+TS       model_amt          gamma   multiplicative  0.1454  360  47.73                   0.411               TRUE     
+AS       model_amt_per_cnt  gamma   multiplicative  0.1056  360  18.76                   0.1349              TRUE     
+
+--------------------------------------------------------------------------------------------
+2. EWME (point estimate + bootstrap 95% CI)
+--------------------------------------------------------------------------------------------
+Outcome  Effect                   Effect_unit     EWME     Link_EWME  Bootstrap_SE_link  CI_lower  CI_upper  Significant_95CI  N_boot_success
+---------------------------------------------------------------------------------------------------------------------------------------------
+TC       TEMP_MAIN                percent_change  4.4812   0.043837   0.020632           0.34051   8.7928    TRUE              4             
+TC       RH_MAIN                  percent_change  16.049   0.14884    0.035216           8.3095    24.342    TRUE              4             
+TC       JOINT_TEMP_RH_EMPIRICAL  percent_change  25.312   0.22564    0.036502            16.66    34.606    TRUE              4             
+TS       TEMP_MAIN                percent_change  7.6929   0.074114   0.020465           3.4588      12.1    TRUE              4             
+TS       RH_MAIN                  percent_change  19.568   0.17872    0.031374           12.437    27.151    TRUE              4             
+TS       JOINT_TEMP_RH_EMPIRICAL  percent_change  40.509   0.3401     0.015949           36.184     44.97    TRUE              4             
+AS       TEMP_MAIN                percent_change  2.5982   0.025651   0.0085667          0.88996   4.3354    TRUE              4             
+AS       RH_MAIN                  percent_change  0.67548  0.0067321  0.0060484          -0.51094   1.876    FALSE             4             
+AS       JOINT_TEMP_RH_EMPIRICAL  percent_change  2.8601   0.028199   0.010847           0.6964    5.0702    TRUE              4             
+
+============================================================================================

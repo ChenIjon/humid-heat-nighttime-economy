@@ -1,0 +1,4 @@
+"Outcome","Response","Family","Response_scale","Scale_factor","Description"
+"TC","model_cnt","nb","multiplicative",1,"Transaction count"
+"TS","model_amt","gamma","multiplicative",1e+05,"Total spending"
+"AS","model_amt_per_cnt","gamma","multiplicative",10,"Average spending per transaction"
